@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuctionX — Real-Time Live Auction Engine</title>
+  <meta name="description" content="Experience real-time live auctions with anti-snipe protection, live bid feeds, and instant outbid alerts. Powered by Socket.io." />
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Socket.io client loaded from same origin — works locally and on Render -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     JOIN SCREEN
+════════════════════════════════════════════════════════════════════════════ -->
+<section id="join-screen" role="main" aria-label="Join Auction">
+  <div class="join-card">
+    <div class="join-logo">
+      <span class="logo-icon">🔨</span>
+      <h1>AuctionX</h1>
+      <p>Real-Time Live Bidding Engine</p>
+    </div>
+
+    <div class="form-group">
+      <label for="username-input">Your Name</label>
+      <input
+        type="text"
+        id="username-input"
+        placeholder="e.g. Vikram, Ananya…"
+        maxlength="30"
+        autocomplete="off"
+        autofocus
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="auction-select">Select Auction</label>
+      <select id="auction-select">
+        <option value="AUC_VINTAGE_99">1967 Vintage Fender Stratocaster</option>
+        <option value="AUC_PATEK_WATCH">Patek Philippe Nautilus Ref. 5711</option>
+        <option value="AUC_KLIMT_PAINTING">Gustav Klimt — "Golden Garden"</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Participate As</label>
+      <div class="role-toggle">
+        <button class="role-btn active" data-role="bidder" id="role-bidder">🏷️ Bidder</button>
+        <button class="role-btn" data-role="viewer" id="role-viewer">👁️ Viewer</button>
+      </div>
+    </div>
+
+    <button class="btn-join" id="join-btn">Enter Auction Floor →</button>
+
+    <p id="join-error" style="color:#ff3366;font-size:0.85rem;margin-top:12px;text-align:center;min-height:20px;"></p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="app">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <span class="header-logo">🔨 AuctionX</span>
+      <div class="header-meta">
+        <span class="header-badge badge-user" id="hdr-username">—</span>
+        <span class="header-badge badge-wallet" id="hdr-wallet" style="display:none">₹—</span>
+        <span class="header-badge badge-viewers" id="hdr-viewers">👥 —</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="main-layout">
+
+    <!-- ── LEFT COLUMN ─────────────────────────────────────────────────── -->
+    <div style="display:flex;flex-direction:column;gap:20px;">
+
+      <!-- Item Info Card -->
+      <div class="card item-card">
+        <div class="item-header">
+          <div>
+            <h2 class="item-title" id="item-title">—</h2>
+            <p class="item-description" id="item-description">—</p>
+          </div>
+          <span class="status-chip status-active" id="status-chip">● Live</span>
+        </div>
+
+        <div class="bid-stats">
+          <div class="stat-block">
+            <div class="stat-label">Starting Bid</div>
+            <div class="stat-value" id="stat-starting">—</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Min Increment</div>
+            <div class="stat-value" id="stat-increment">—</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-label">Reserve Price</div>
+            <div class="stat-value" id="stat-reserve">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current Bid + Timer + Controls -->
+      <div class="card bid-ticker-card">
+
+        <div class="ticker-label">Current Bid</div>
+        <div class="current-bid-display" id="current-bid-display" aria-live="polite">₹0</div>
+
+        <div class="highest-bidder-row">
+          Highest Bidder: <span class="highest-bidder-name" id="highest-bidder-name">—</span>
+        </div>
+
+        <div class="min-bid-row">
+          Minimum Next Bid: <span class="min-bid-amount" id="min-bid-amount">—</span>
+        </div>
+
+        <!-- Countdown -->
+        <div class="countdown-wrapper">
+          <div class="countdown-display" id="countdown-display" aria-live="polite">—</div>
+          <div class="countdown-bar-wrapper">
+            <div class="countdown-bar-label">Time Remaining</div>
+            <div class="countdown-bar">
+              <div class="countdown-fill" id="countdown-fill" style="width:100%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Viewer notice -->
+        <div class="viewer-notice" id="viewer-notice">
+          👁️ You are in <strong>Viewer Mode</strong>. Enjoy the live auction!
+        </div>
+
+        <!-- Bid Controls (hidden for viewers) -->
+        <div class="bid-controls" id="bid-controls">
+          <div class="quick-bids" id="quick-bids">
+            <button class="btn-quick" id="qb-1" data-mult="1">+Min</button>
+            <button class="btn-quick" id="qb-2" data-mult="2">+2× Min</button>
+            <button class="btn-quick" id="qb-5" data-mult="5">+5× Min</button>
+          </div>
+          <div class="bid-input-row">
+            <input
+              type="number"
+              id="bid-amount-input"
+              placeholder="Enter your bid amount…"
+              min="0"
+              step="1"
+              aria-label="Custom bid amount"
+            />
+            <button class="btn-place-bid" id="place-bid-btn">Place Bid ⚡</button>
+          </div>
+          <p class="rejection-msg" id="rejection-msg" role="alert" aria-live="assertive"></p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── SIDEBAR ─────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Live Bid History -->
+      <div class="card history-card">
+        <div class="card-header">
+          <span class="card-title">📋 Live Bid Feed</span>
+          <span id="history-count" style="font-size:0.78rem;color:var(--text-muted)">0 bids</span>
+        </div>
+        <div class="history-list" id="history-list" aria-live="polite">
+          <div class="history-empty">No bids yet. Be the first! 🎯</div>
+        </div>
+      </div>
+
+    </aside>
+
+  </div><!-- /main-layout -->
+</div><!-- /app -->
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container" aria-live="assertive"></div>
+
+<!-- Sold Overlay -->
+<canvas id="confetti-canvas"></canvas>
+<div class="sold-overlay" id="sold-overlay" role="dialog" aria-modal="true" aria-label="Auction Result">
+  <div class="sold-icon" id="sold-icon">🏆</div>
+  <h2 class="sold-title won" id="sold-title">SOLD!</h2>
+  <p class="sold-subtitle" id="sold-subtitle">Congratulations to the winner</p>
+  <p class="sold-winner" id="sold-winner">—</p>
+  <p class="sold-price" id="sold-price">₹—</p>
+  <button class="btn-reset" id="restart-btn">🔄 Restart Demo Auction</button>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
